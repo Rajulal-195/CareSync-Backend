@@ -2,9 +2,11 @@ import bcrypt from 'bcrypt';
 import { FilterQuery, Types } from 'mongoose';
 import { env } from '../config/env';
 import { Department } from '../models/Department';
+import { Appointment } from '../models/Appointment';
 import { Doctor, IDoctor } from '../models/Doctor';
+import { DoctorSchedule } from '../models/DoctorSchedule';
 import { IUser, User } from '../models/User';
-import { Errors, isDuplicateKey } from '../utils/errors';
+import { AppError, Errors, isDuplicateKey } from '../utils/errors';
 import { escapeRegex, pageMeta, skipOf } from '../utils/pagination';
 import { audit } from './audit.service';
 import { revokeAllSessions } from './auth.service';
@@ -85,6 +87,30 @@ export async function updateDoctor(actor: Express.AuthUser, id: string, i: any) 
   return getDoctor(id);
 }
 
+/**
+ * Permanently removes a doctor (profile, schedule and login). Appointments reference the doctor, so a doctor
+ * who has any appointment, past or present, is never deleted: that would orphan clinical history. The caller
+ * gets 409 HAS_APPOINTMENTS and should deactivate the doctor instead (PATCH { isActive: false }).
+ */
+export async function deleteDoctor(actor: Express.AuthUser, id: string) {
+  const doctor = await Doctor.findById(id);
+  if (!doctor) throw Errors.notFound('Doctor not found');
+  // Block new bookings first (booking rejects inactive doctors), so none can slip in between the check and the delete.
+  const wasActive = doctor.isActive;
+  await Doctor.updateOne({ _id: doctor._id }, { $set: { isActive: false } });
+  const appointments = await Appointment.countDocuments({ doctor: doctor._id });
+  if (appointments > 0) {
+    if (wasActive) await Doctor.updateOne({ _id: doctor._id }, { $set: { isActive: true } });
+    throw new AppError(409, 'HAS_APPOINTMENTS', 'This doctor has appointment history and cannot be deleted. Deactivate the doctor instead.', { appointments });
+  }
+  await revokeAllSessions(String(doctor.user));
+  await DoctorSchedule.deleteOne({ doctor: doctor._id });
+  await Doctor.deleteOne({ _id: doctor._id });
+  await User.deleteOne({ _id: doctor.user });
+  await audit({ userId: actor.id, role: actor.role, action: 'DOCTOR_DELETED', entity: 'Doctor', entityId: doctor._id, metadata: { userId: String(doctor.user) } });
+  return { id };
+}
+
 // ------------------------------------------------------------ receptionists
 export async function createReceptionist(actor: Express.AuthUser, i: { name: string; email: string; password: string }) {
   const user = await createUser(i.name, i.email, i.password, 'RECEPTIONIST');
@@ -113,4 +139,21 @@ export async function updateReceptionist(actor: Express.AuthUser, id: string, i:
   if (i.isActive === false || i.password) await revokeAllSessions(id);
   await audit({ userId: actor.id, role: actor.role, action: 'RECEPTIONIST_UPDATED', entity: 'User', entityId: u._id, metadata: { fields: Object.keys(i) } });
   return u;
+}
+
+/**
+ * Permanently removes a receptionist login. Appointments record who created them, so a receptionist who has
+ * booked any appointment is kept (409 HAS_APPOINTMENTS): deactivate instead (PATCH { isActive: false }).
+ */
+export async function deleteReceptionist(actor: Express.AuthUser, id: string) {
+  const user = await User.findOne({ _id: id, role: 'RECEPTIONIST' });
+  if (!user) throw Errors.notFound('Receptionist not found');
+  const appointments = await Appointment.countDocuments({ createdBy: user._id });
+  if (appointments > 0) {
+    throw new AppError(409, 'HAS_APPOINTMENTS', 'This receptionist has booked appointments and cannot be deleted. Deactivate the account instead.', { appointments });
+  }
+  await revokeAllSessions(id);
+  await User.deleteOne({ _id: user._id });
+  await audit({ userId: actor.id, role: actor.role, action: 'RECEPTIONIST_DELETED', entity: 'User', entityId: user._id });
+  return { id };
 }

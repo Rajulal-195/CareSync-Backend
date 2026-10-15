@@ -76,6 +76,7 @@ export const openApiSpec = {
     '/doctors/{id}': {
       get: op({ tag: 'Doctors', summary: 'Get doctor', roles: 'SUPER_ADMIN, RECEPTIONIST', params: [idParam], res: { '200': ok('Doctor', wrap(ref('Doctor'))), '404': ok('Not found') } }),
       patch: op({ tag: 'Doctors', summary: 'Update doctor (isActive=false also revokes sessions)', roles: 'SUPER_ADMIN', params: [idParam], body: { type: 'object', additionalProperties: true }, res: { '200': ok('Updated', wrap(ref('Doctor'))) } }),
+      delete: op({ tag: 'Doctors', summary: 'Delete doctor (profile, schedule, login). 409 HAS_APPOINTMENTS if the doctor has any appointment: deactivate instead', roles: 'SUPER_ADMIN', params: [idParam], res: { '200': ok('Deleted'), '404': ok('Not found'), '409': ok('Has appointment history') } }),
     },
     '/doctors/{id}/schedule': {
       get: op({ tag: 'Doctors', summary: 'Get schedule', roles: 'SUPER_ADMIN, RECEPTIONIST', params: [idParam], res: { '200': ok('Schedule', wrap(ref('Schedule'))) } }),
@@ -91,6 +92,7 @@ export const openApiSpec = {
     '/receptionists/{id}': {
       get: op({ tag: 'Receptionists', summary: 'Get receptionist', roles: 'SUPER_ADMIN', params: [idParam], res: { '200': ok('Receptionist', wrap(ref('User'))) } }),
       patch: op({ tag: 'Receptionists', summary: 'Update receptionist', roles: 'SUPER_ADMIN', params: [idParam], body: { type: 'object', properties: { name: { type: 'string' }, password: { type: 'string' }, isActive: { type: 'boolean' } } }, res: { '200': ok('Updated', wrap(ref('User'))) } }),
+      delete: op({ tag: 'Receptionists', summary: 'Delete receptionist. 409 HAS_APPOINTMENTS if they booked any appointment: deactivate instead', roles: 'SUPER_ADMIN', params: [idParam], res: { '200': ok('Deleted'), '404': ok('Not found'), '409': ok('Has booked appointments') } }),
     },
 
     '/patients': {

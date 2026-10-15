@@ -23,6 +23,7 @@ doctors.post('/', SA, validate({ body: v.createDoctorBody }), c.createDoctor);
 doctors.get('/:id', SA_REC, validate({ params: idParam }), c.getDoctor);
 doctors.patch('/:id', SA, validate({ params: idParam, body: v.updateDoctorBody }), c.updateDoctor);
 doctors.put('/:id', SA, validate({ params: idParam, body: v.updateDoctorBody }), c.updateDoctor); // same partial-update body as PATCH
+doctors.delete('/:id', SA, validate({ params: idParam }), c.deleteDoctor);
 doctors.get('/:id/schedule', SA_REC, validate({ params: idParam }), c.getSchedule);
 doctors.patch('/:id/schedule', SA, validate({ params: idParam, body: v.schedulePatchBody }), c.patchSchedule);
 doctors.put('/:id/schedule', SA, validate({ params: idParam, body: v.scheduleBody }), c.putSchedule);
@@ -35,3 +36,4 @@ receptionists.post('/', validate({ body: v.createReceptionistBody }), c.createRe
 receptionists.get('/:id', validate({ params: idParam }), c.getReceptionist);
 receptionists.patch('/:id', validate({ params: idParam, body: v.updateReceptionistBody }), c.updateReceptionist);
 receptionists.put('/:id', validate({ params: idParam, body: v.updateReceptionistBody }), c.updateReceptionist);
+receptionists.delete('/:id', validate({ params: idParam }), c.deleteReceptionist);

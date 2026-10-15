@@ -16,10 +16,13 @@ export const listDoctors = asyncHandler(async (req, res) => { res.json(await sta
 export const getDoctor = asyncHandler(async (req, res) => { res.json({ data: await staff.getDoctor(id(req)) }); });
 export const updateDoctor = asyncHandler(async (req, res) => { res.json({ data: await staff.updateDoctor(req.user!, id(req), req.body) }); });
 
+export const deleteDoctor = asyncHandler(async (req, res) => { res.json({ message: 'Doctor deleted', data: await staff.deleteDoctor(req.user!, id(req)) }); });
+
 export const createReceptionist = asyncHandler(async (req, res) => { res.status(201).json({ data: await staff.createReceptionist(req.user!, req.body) }); });
 export const listReceptionists = asyncHandler(async (req, res) => { res.json(await staff.listReceptionists(req.query as any)); });
 export const getReceptionist = asyncHandler(async (req, res) => { res.json({ data: await staff.getReceptionist(id(req)) }); });
 export const updateReceptionist = asyncHandler(async (req, res) => { res.json({ data: await staff.updateReceptionist(req.user!, id(req), req.body) }); });
+export const deleteReceptionist = asyncHandler(async (req, res) => { res.json({ message: 'Receptionist deleted', data: await staff.deleteReceptionist(req.user!, id(req)) }); });
 
 export const putSchedule = asyncHandler(async (req, res) => { res.json({ data: await schedule.upsertSchedule(req.user!, id(req), req.body) }); });
 export const getSchedule = asyncHandler(async (req, res) => { res.json({ data: await schedule.getSchedule(id(req)) }); });
