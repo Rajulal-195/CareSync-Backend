@@ -23,5 +23,6 @@ const schema = new Schema<IPatient>(
   { timestamps: true },
 );
 schema.index({ mobile: 1 });
-schema.index({ name: 1 });
+schema.index({ name: 1, _id: 1 });          // sortBy=name with the _id tie-breaker
+schema.index({ createdAt: -1, _id: -1 });   // default patient list sort
 export const Patient = model<IPatient>('Patient', schema);

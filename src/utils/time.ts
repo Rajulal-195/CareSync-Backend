@@ -19,11 +19,23 @@ export function isValidDateString(s: string) {
 /** Day of week (0=Sun) of a calendar date string; independent of server timezone. */
 export const dayOfWeek = (s: string) => new Date(`${s}T00:00:00Z`).getUTCDay();
 
+// Building an Intl.DateTimeFormat is expensive (it loads locale + timezone data); it was being rebuilt on every
+// call, i.e. once per doctor per /slots request and once per booking. Formatters are immutable, so cache per timezone.
+const nowFormatters = new Map<string, Intl.DateTimeFormat>();
+const nowFormatter = (tz: string) => {
+  let f = nowFormatters.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    });
+    nowFormatters.set(tz, f);
+  }
+  return f;
+};
+
 export function nowInTimezone(tz: string, at = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(at);
+  const parts = nowFormatter(tz).formatToParts(at);
   const g = (t: string) => parts.find((p) => p.type === t)!.value;
   return { date: `${g('year')}-${g('month')}-${g('day')}`, time: `${g('hour')}:${g('minute')}` };
 }

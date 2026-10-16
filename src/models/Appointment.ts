@@ -61,6 +61,9 @@ schema.index({ appointmentDate: 1, status: 1 });              // receptionist + 
 schema.index({ patient: 1, appointmentDate: -1 });            // patient history, doctor->patient access check
 schema.index({ department: 1, appointmentDate: 1 });          // per-department dashboard
 schema.index({ status: 1, appointmentDate: 1, startTime: 1 }); // status-filtered, date-sorted worklists
+schema.index({ appointmentDate: -1, startTime: -1, _id: -1 });   // default worklist sort (either direction), no in-memory sort
+schema.index({ doctor: 1, appointmentDate: -1, startTime: -1, _id: -1 }); // doctor-scoped worklists (the partial unique index can't serve unfiltered-status queries)
+schema.index({ createdBy: 1 });                               // receptionist delete guard (countDocuments by creator)
 schema.index({ createdAt: -1 });                              // sortBy=createdAt
 
 export const Appointment = model<IAppointment>('Appointment', schema);

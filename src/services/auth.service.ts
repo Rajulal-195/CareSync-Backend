@@ -12,7 +12,7 @@ import { audit } from './audit.service';
 export interface ReqCtx { ip?: string; userAgent?: string }
 
 // Compared against when the email is unknown so response time doesn't reveal account existence.
-const DUMMY_HASH = bcrypt.hashSync('timing-equaliser-password', 10);
+const DUMMY_HASH = bcrypt.hashSync('timing-equaliser-password', env.BCRYPT_ROUNDS);
 const refreshExpiry = () => new Date(Date.now() + env.REFRESH_TTL_SECONDS * 1000);
 
 const signAccess = (user: { id: string; role: string }) =>
@@ -90,7 +90,12 @@ export async function revokeAllSessions(userId: string) {
   await RefreshSession.updateMany({ user: userId, revokedAt: null }, { $set: { revokedAt: new Date() } });
 }
 
-/** Verifies an access token and loads the live user (so deactivation takes effect immediately). */
+/**
+ * Verifies an access token and loads the live user (so deactivation takes effect immediately).
+ * Runs on EVERY request, so it is kept to the minimum: lean reads with projections, and the doctor-profile lookup runs
+ * in parallel with the user lookup instead of after it. The token's `role` claim is only a hint for which extra query
+ * to start early; the role that is trusted is always the one loaded from the database.
+ */
 export async function authenticateAccessToken(token: string): Promise<Express.AuthUser> {
   let p: any;
   try {
@@ -99,13 +104,17 @@ export async function authenticateAccessToken(token: string): Promise<Express.Au
     throw Errors.unauthorized('Invalid or expired access token');
   }
   if (!isValidObjectId(p.sub)) throw Errors.unauthorized('Invalid access token');
-  const user = await User.findById(p.sub);
+  const doctorOf = () => Doctor.findOne({ user: p.sub, isActive: true }).select('_id').lean();
+  const [user, earlyDoctor] = await Promise.all([
+    User.findById(p.sub).select('name role isActive').lean(),
+    p.role === 'DOCTOR' ? doctorOf() : Promise.resolve(undefined),
+  ]);
   if (!user || !user.isActive) throw Errors.unauthorized('Account not found or disabled');
-  const au: Express.AuthUser = { id: user.id, role: user.role, name: user.name, tokenExp: p.exp };
+  const au: Express.AuthUser = { id: String(user._id), role: user.role, name: user.name, tokenExp: p.exp };
   if (user.role === 'DOCTOR') {
-    const d = await Doctor.findOne({ user: user._id, isActive: true }).select('_id');
+    const d = p.role === 'DOCTOR' ? earlyDoctor : await doctorOf(); // role changed since the token was issued
     if (!d) throw Errors.forbidden('Doctor profile is inactive');
-    au.doctorId = d.id;
+    au.doctorId = String(d._id);
   }
   return au;
 }

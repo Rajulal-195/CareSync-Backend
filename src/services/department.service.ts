@@ -14,7 +14,7 @@ export async function createDepartment(actor: Express.AuthUser, input: { name: s
   }
 }
 export const listDepartments = (q: { isActive?: boolean }) =>
-  Department.find(q.isActive === undefined ? {} : { isActive: q.isActive }).sort({ name: 1 });
+  Department.find(q.isActive === undefined ? {} : { isActive: q.isActive }).sort({ name: 1 }).lean();
 
 export async function updateDepartment(actor: Express.AuthUser, id: string, patch: { name?: string; description?: string; isActive?: boolean }) {
   if (patch.isActive === false && (await Doctor.exists({ department: id, isActive: true })))

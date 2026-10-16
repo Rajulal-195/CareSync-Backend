@@ -14,7 +14,7 @@ export const listDepartmentsQuery = z.object({ isActive: boolQuery.optional() })
 
 // ---- doctors
 const doctorProfile = {
-  specialization: z.string().trim().min(2).max(100),
+  specialization: z.string().trim().min(1).max(100),
   qualification: z.string().trim().max(200).optional(),
   experienceYears: z.number().int().min(0).max(80).optional(),
   consultationFee: z.number().min(0).max(1_000_000).optional(),

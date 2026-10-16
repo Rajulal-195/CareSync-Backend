@@ -35,7 +35,7 @@ describe('envelope, errors, security, required endpoints, audit', () => {
     it('every error response uses { success:false, message, error:{code}, requestId }', async () => {
       const cases: [request.Test, number, string][] = [
         [request(app).get('/api/v1/auth/me'), 401, 'UNAUTHORIZED'],
-        [request(app).get('/api/v1/doctors').set(auth(ctx.rec)), 403, 'FORBIDDEN'],
+        [request(app).get('/api/v1/receptionists').set(auth(ctx.rec)), 403, 'FORBIDDEN'], // receptionists may list doctors (needed to book) but not manage staff
         [request(app).get('/api/v1/nope').set(auth(ctx.rec)), 404, 'NOT_FOUND'],
         [request(app).post('/api/v1/auth/login').send({ email: 'bad' }), 400, 'VALIDATION_ERROR'],
         [request(app).post('/api/v1/auth/login').set('Content-Type', 'application/json').send('{"email":'), 400, 'BAD_JSON'],

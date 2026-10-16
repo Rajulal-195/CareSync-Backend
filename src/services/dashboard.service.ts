@@ -46,9 +46,9 @@ export async function receptionistDashboard(date = today()) {
   const [status, awaiting, waiting] = await Promise.all([
     byStatus({ appointmentDate: date }),
     Appointment.find({ appointmentDate: date, status: 'SCHEDULED' }).sort({ startTime: 1 }).limit(20)
-      .populate('patient', 'patientId name mobile').populate({ path: 'doctor', select: 'user', populate: { path: 'user', select: 'name' } }),
+      .populate('patient', 'patientId name mobile').populate({ path: 'doctor', select: 'user', populate: { path: 'user', select: 'name' } }).lean(),
     Appointment.find({ appointmentDate: date, status: 'ARRIVED' }).sort({ arrivedAt: 1 }).limit(20)
-      .populate('patient', 'patientId name').populate({ path: 'doctor', select: 'user', populate: { path: 'user', select: 'name' } }),
+      .populate('patient', 'patientId name').populate({ path: 'doctor', select: 'user', populate: { path: 'user', select: 'name' } }).lean(),
   ]);
   return { date, appointmentsByStatus: statusMap(status), awaitingArrival: awaiting, waitingRoom: waiting };
 }
@@ -57,7 +57,7 @@ export async function doctorDashboard(actor: Express.AuthUser, date = today()) {
   const match = { appointmentDate: date, doctor: new Types.ObjectId(actor.doctorId) };
   const [status, list] = await Promise.all([
     byStatus(match),
-    Appointment.find({ appointmentDate: date, doctor: actor.doctorId, status: { $in: ['SCHEDULED', 'ARRIVED'] } }).sort({ startTime: 1 }).populate('patient', 'patientId name'),
+    Appointment.find({ appointmentDate: date, doctor: actor.doctorId, status: { $in: ['SCHEDULED', 'ARRIVED'] } }).sort({ startTime: 1 }).populate('patient', 'patientId name').lean(),
   ]);
   return { date, appointmentsByStatus: statusMap(status), upcoming: list };
 }

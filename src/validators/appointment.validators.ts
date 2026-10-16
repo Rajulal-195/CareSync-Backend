@@ -10,7 +10,7 @@ export const createAppointmentBody = z
     doctorId: objectId,
     appointmentDate: dateStr,
     startTime: timeStr,
-    purpose: z.string().trim().min(2).max(500),
+    purpose: z.string().trim().min(1).max(500),
     notes: z.string().trim().max(2000).optional(),
   })
   .strict()
@@ -21,7 +21,7 @@ export const updateAppointmentBody = z
     doctorId: objectId.optional(),
     appointmentDate: dateStr.optional(),
     startTime: timeStr.optional(),
-    purpose: z.string().trim().min(2).max(500).optional(),
+    purpose: z.string().trim().min(1).max(500).optional(),
     notes: z.string().trim().max(2000).optional(),
   })
   .strict()

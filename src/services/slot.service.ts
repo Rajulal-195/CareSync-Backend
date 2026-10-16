@@ -4,6 +4,7 @@ import { ACTIVE_APPOINTMENT_STATUSES } from '../models/constants';
 import { Department } from '../models/Department';
 import { Doctor, IDoctor } from '../models/Doctor';
 import { DoctorSchedule } from '../models/DoctorSchedule';
+import { User } from '../models/User';
 import { Errors } from '../utils/errors';
 import { generateSlots, nowInTimezone } from '../utils/time';
 
@@ -19,14 +20,18 @@ export async function listSlots(q: { date: string; doctorId?: string; department
   if (q.doctorId) filter._id = q.doctorId as any;
   if (q.departmentId) filter.department = q.departmentId as any;
 
-  const doctors = await Doctor.find(filter).populate('user', 'name isActive').limit(200);
+  const doctors = await Doctor.find(filter).limit(200).lean();
   if (q.doctorId && doctors.length === 0) throw Errors.notFound('Doctor not found or inactive');
   const ids = doctors.map((d) => d._id);
 
-  const [schedules, booked] = await Promise.all([
-    DoctorSchedule.find({ doctor: { $in: ids }, isActive: true }),
-    Appointment.find({ doctor: { $in: ids }, appointmentDate: q.date, status: { $in: ACTIVE_APPOINTMENT_STATUSES } }).select('doctor startTime endTime'),
+  // Users, schedules and bookings are independent of each other: one parallel round instead of populate + two more.
+  const [users, schedules, booked] = await Promise.all([
+    User.find({ _id: { $in: doctors.map((d) => d.user) } }).select('name isActive').lean(),
+    DoctorSchedule.find({ doctor: { $in: ids }, isActive: true }).lean(),
+    Appointment.find({ doctor: { $in: ids }, appointmentDate: q.date, status: { $in: ACTIVE_APPOINTMENT_STATUSES } }).select('doctor startTime endTime').lean(),
   ]);
+  const userOf = new Map<string, (typeof users)[number]>();
+  for (const u of users) userOf.set(String(u._id), u);
   const scheduleOf = new Map<string, (typeof schedules)[number]>();
   for (const s of schedules) scheduleOf.set(String(s.doctor), s);
   const bookedOf = new Map<string, { startTime: string; endTime: string }[]>();
@@ -34,7 +39,7 @@ export async function listSlots(q: { date: string; doctorId?: string; department
 
   const out: Record<string, unknown>[] = [];
   for (const d of doctors) {
-    const user: any = d.user;
+    const user = userOf.get(String(d.user));
     const schedule = scheduleOf.get(String(d._id));
     if (!user?.isActive || !schedule) continue; // unavailable doctors/schedules produce no slots
     const now = nowInTimezone(schedule.timezone);
@@ -49,7 +54,7 @@ export async function listSlots(q: { date: string; doctorId?: string; department
               return { ...s, status: isBooked ? ('BOOKED' as const) : ('AVAILABLE' as const), available: !isBooked };
             });
     out.push({
-      doctorId: String(d._id), doctorName: user.name as string, departmentId: String(d.department), specialization: d.specialization,
+      doctorId: String(d._id), doctorName: user.name, departmentId: String(d.department), specialization: d.specialization,
       date: q.date, timezone: schedule.timezone, slotDuration: schedule.slotDuration, slots,
     });
   }

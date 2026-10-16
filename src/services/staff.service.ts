@@ -57,7 +57,7 @@ export async function listDoctors(q: { page: number; limit: number; departmentId
   if (q.isActive !== undefined) filter.isActive = q.isActive;
   if (q.search) {
     const rx = new RegExp(escapeRegex(q.search), 'i');
-    const users = await User.find({ role: 'DOCTOR', name: rx }).select('_id');
+    const users = await User.find({ role: 'DOCTOR', name: rx }).select('_id').lean();
     filter.$or = [{ user: { $in: users.map((u) => u._id) } }, { specialization: rx }];
   }
   const [data, total] = await Promise.all([
@@ -81,8 +81,10 @@ export async function updateDoctor(actor: Express.AuthUser, id: string, i: any) 
   if (i.password) userPatch.passwordHash = await hash(i.password);
   if (i.isActive !== undefined) { doctor.isActive = i.isActive; userPatch.isActive = i.isActive; }
   await doctor.save();
-  if (Object.keys(userPatch).length) await User.updateOne({ _id: doctor.user }, { $set: userPatch });
-  if (i.isActive === false || i.password) await revokeAllSessions(String(doctor.user));
+  await Promise.all([
+    Object.keys(userPatch).length ? User.updateOne({ _id: doctor.user }, { $set: userPatch }) : null,
+    i.isActive === false || i.password ? revokeAllSessions(String(doctor.user)) : null,
+  ]);
   await audit({ userId: actor.id, role: actor.role, action: 'DOCTOR_UPDATED', entity: 'Doctor', entityId: doctor._id, metadata: { fields: Object.keys(i) } });
   return getDoctor(id);
 }

@@ -22,6 +22,7 @@ const schema = new Schema<IAuditLog>(
   },
   { versionKey: false },
 );
+schema.index({ timestamp: -1, _id: -1 }); // unfiltered audit list
 schema.index({ user: 1, timestamp: -1 });
 schema.index({ action: 1, timestamp: -1 });
 schema.index({ entity: 1, entityId: 1 });

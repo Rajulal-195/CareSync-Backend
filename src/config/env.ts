@@ -1,6 +1,8 @@
-import 'dotenv/config';
+import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 import { isValidTimezone, parseDuration } from '../utils/time';
+
+if (process.env.NODE_ENV !== 'test') loadDotenv(); // tests configure everything themselves (see tests/setupEnv.ts)
 
 const DURATION = /^\d+[smhd]$/;
 const duration = (def: string) => z.string().regex(DURATION, 'Use a number plus s, m, h or d (e.g. 15m, 7d)').default(def);

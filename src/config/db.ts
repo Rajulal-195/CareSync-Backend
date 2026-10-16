@@ -16,7 +16,7 @@ export async function connectDb(uri = env.MONGODB_URI) {
   }
   for (let attempt = 1; ; attempt++) {
     try {
-      await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000, maxPoolSize: 20 });
+      await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000, maxPoolSize: 20, minPoolSize: 5 });
       break;
     } catch (e) {
       logger.error('mongo_connect_failed', { attempt, of: env.DB_CONNECT_RETRIES, error: e });

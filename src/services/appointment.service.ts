@@ -27,23 +27,33 @@ const brief = (a: any) => ({ id: String(a._id), doctor: String(a.doctor), status
 const publish = (event: AppointmentEvent, a: any, opts: { previousStatus?: string; extraDoctorIds?: string[] } = {}) => emitAppointmentEvent(event, brief(a), opts);
 const publishSlot = (doctorId: unknown, date: string) => emitSlotUpdated(String(doctorId), date);
 
-/** Validates doctor/schedule/slot/past/overlap. The partial unique index remains the final arbiter under concurrency. */
+/**
+ * Validates doctor/schedule/slot/past/overlap. The partial unique index remains the final arbiter under concurrency.
+ * Queries are batched into two parallel rounds (was five sequential round trips); results are still interpreted in
+ * the original order, so the error a caller gets for a given situation is unchanged.
+ */
 async function assertBookable(a: { doctorId: string; date: string; startTime: string; excludeId?: string }) {
-  const doctor = await Doctor.findById(a.doctorId);
+  const [doctor, schedule] = await Promise.all([
+    Doctor.findById(a.doctorId).lean(),
+    DoctorSchedule.findOne({ doctor: a.doctorId, isActive: true }).lean(),
+  ]);
   if (!doctor) throw Errors.notFound('Doctor not found');
-  const owner = await User.findById(doctor.user).select('isActive');
+  const slot = schedule ? generateSlots(schedule, a.date).find((s) => s.startTime === a.startTime) : undefined;
+  const [owner, clash] = await Promise.all([
+    User.findById(doctor.user).select('isActive').lean(),
+    slot
+      ? Appointment.exists({
+          doctor: doctor._id, appointmentDate: a.date, status: { $in: ACTIVE_APPOINTMENT_STATUSES },
+          startTime: { $lt: slot.endTime }, endTime: { $gt: slot.startTime },
+          ...(a.excludeId ? { _id: { $ne: a.excludeId } } : {}),
+        })
+      : Promise.resolve(null),
+  ]);
   if (!doctor.isActive || !owner?.isActive) throw Errors.conflict('Doctor is not active');
-  const schedule = await DoctorSchedule.findOne({ doctor: doctor._id, isActive: true });
   if (!schedule) throw Errors.conflict('Doctor has no active schedule');
-  const slot = generateSlots(schedule, a.date).find((s) => s.startTime === a.startTime);
   if (!slot) throw Errors.unprocessable('Requested time is not a bookable slot for this doctor and date');
   const now = nowInTimezone(schedule.timezone);
   if (a.date < now.date || (a.date === now.date && a.startTime <= now.time)) throw Errors.unprocessable('Cannot book a slot in the past');
-  const clash = await Appointment.exists({
-    doctor: doctor._id, appointmentDate: a.date, status: { $in: ACTIVE_APPOINTMENT_STATUSES },
-    startTime: { $lt: slot.endTime }, endTime: { $gt: slot.startTime },
-    ...(a.excludeId ? { _id: { $ne: a.excludeId } } : {}),
-  });
   if (clash) throw Errors.conflict('This slot is already booked');
   return { doctor, slot };
 }
@@ -85,20 +95,30 @@ async function createWithNewPatient(actor: Express.AuthUser, i: any, doctor: any
 }
 
 export async function createAppointment(actor: Express.AuthUser, i: any) {
-  if (i.patientId && !(await Patient.exists({ _id: i.patientId }))) throw Errors.notFound('Patient not found');
-  const { doctor, slot } = await assertBookable({ doctorId: i.doctorId, date: i.appointmentDate, startTime: i.startTime });
+  // Patient check and bookability run in parallel; results are interpreted in the original order (patient first).
+  const patientCheck = i.patientId ? Patient.exists({ _id: i.patientId }) : Promise.resolve(true);
+  const bookable = assertBookable({ doctorId: i.doctorId, date: i.appointmentDate, startTime: i.startTime });
+  bookable.catch(() => undefined); // avoid an unhandled rejection if the patient check throws first
+  if (!(await patientCheck)) throw Errors.notFound('Patient not found');
+  const { doctor, slot } = await bookable;
 
   let appt: any;
+  const audits: Promise<unknown>[] = [];
   if (i.patientId) {
     try { appt = await Appointment.create(buildDoc(actor, i, doctor, slot, i.patientId)); } catch (e) { throw slotTaken(e); }
   } else {
     appt = await createWithNewPatient(actor, i, doctor, slot);
-    await audit({ userId: actor.id, role: actor.role, action: 'PATIENT_REGISTERED', entity: 'Patient', entityId: appt.patient, metadata: { via: 'booking' } });
+    audits.push(audit({ userId: actor.id, role: actor.role, action: 'PATIENT_REGISTERED', entity: 'Patient', entityId: appt.patient, metadata: { via: 'booking' } }));
   }
-  await audit({ userId: actor.id, role: actor.role, action: 'APPOINTMENT_CREATED', entity: 'Appointment', entityId: appt._id, metadata: { doctorId: i.doctorId, date: i.appointmentDate, startTime: slot.startTime } });
+  audits.push(audit({ userId: actor.id, role: actor.role, action: 'APPOINTMENT_CREATED', entity: 'Appointment', entityId: appt._id, metadata: { doctorId: i.doctorId, date: i.appointmentDate, startTime: slot.startTime } }));
   publish('created', appt); // after persistence (and after transaction commit)
   publishSlot(appt.doctor, appt.appointmentDate);
-  const [appointment, availability] = await Promise.all([getAppointment(actor, String(appt._id)), availabilityFor(String(doctor._id), i.appointmentDate)]);
+  // Audit writes (still awaited before responding) overlap with the read-back instead of preceding it.
+  const [appointment, availability] = await Promise.all([
+    getAppointment(actor, String(appt._id)),
+    availabilityFor(String(doctor._id), i.appointmentDate),
+    Promise.all(audits),
+  ]);
   return { appointment, availability };
 }
 
@@ -107,7 +127,7 @@ const scopeFor = (actor: Express.AuthUser): FilterQuery<IAppointment> =>
 
 /** 404 (not 403) for records outside the caller's scope so ids can't be probed. */
 export async function getAppointment(actor: Express.AuthUser, id: string) {
-  const a = await Appointment.findOne({ _id: id, ...scopeFor(actor) }).populate(POPULATE);
+  const a = await Appointment.findOne({ _id: id, ...scopeFor(actor) }).select('-__v').populate(POPULATE).lean();
   if (!a) throw Errors.notFound('Appointment not found');
   return a;
 }

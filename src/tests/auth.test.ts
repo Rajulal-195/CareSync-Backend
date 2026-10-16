@@ -104,7 +104,9 @@ describe('auth', () => {
     const secret = () => process.env.JWT_ACCESS_SECRET!;
     const sign = async (claims: object = {}, key = secret(), opts: SignOptions = {}) => {
       const u = await User.findOne({ email: ADMIN.email });
-      return jwt.sign({ role: 'SUPER_ADMIN', ...claims }, key, { subject: String(u!._id), issuer: 'emr-api', audience: 'emr-web', expiresIn: 600, ...opts });
+      const options: SignOptions = { subject: String(u!._id), issuer: 'emr-api', audience: 'emr-web', expiresIn: 600, ...opts };
+      if (options.expiresIn === undefined) delete options.expiresIn; // jsonwebtoken rejects an explicit `expiresIn: undefined`
+      return jwt.sign({ role: 'SUPER_ADMIN', ...claims }, key, options);
     };
     const me = (t: string) => request(app).get('/api/v1/auth/me').set(auth(t));
 

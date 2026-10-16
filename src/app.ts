@@ -1,3 +1,4 @@
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { RequestHandler } from 'express';
@@ -41,6 +42,7 @@ export function createApp() {
     exposedHeaders: ['X-Request-Id'],
     maxAge: 600,
   }));
+  app.use(compression()); // gzip JSON responses (lists can be 100 rows)
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
 
